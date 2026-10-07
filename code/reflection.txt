@@ -1,6 +1,37 @@
-Write your reflection here.
+This assignment made the lineage rule concrete in a way Assignment 02 didn't. There,
+"never overwrite" was a convention I followed by habit; here, the tests actually check
+for it — test_add_hours_worked_keeps_lineage fails if I touch the "hours" column
+or forget out = timesheet.copy() first. That's the copy-add-return shape: copy,
+add one new column, return. I understand now why the copy comes first — without it,
+out["hours_worked"] = ... writes straight into the caller's frame, and nothing in
+pandas warns you.
 
-See reflection.md for what makes a good reflection — be specific, use the
-terminology from this assignment (lineage, grain, element function, Series.apply,
-row apply / axis=1, left merge, NaN, coerce, copy-add-return, boolean index,
-export), and make it actionable.
+The hardest function was parse_hours, specifically "45m". My first version treated
+every chunk as hours, so "45m" came back as 45.0 instead of 0.75. I'd forgotten the
+element function only sees one value at a time — Series.apply calls it once per cell —
+so the bug was entirely inside the function, not in how I was applying it. Reading
+test_parse_hours's exact expected value (0.75) is what made me go back and divide
+minutes by 60.
+
+Grain was a new word for me, but a familiar idea once I had the vocabulary: the
+roster is one row per person, the timesheet is one row per person-who-worked-that-week,
+and you can't combine two different grains by just concatenating them — you need a
+merge. The part I had backwards at first was which side of pd.merge is "left" in a
+left merge. I defaulted to merging the roster onto the timesheet with how="inner"
+and the row count silently dropped by one. That's the bug Step 2 is built to catch:
+an inner merge doesn't error when an employee_id is missing from the roster, it just
+quietly doesn't pay them. Switching to how="left" with the timesheet as the base
+frame fixed it, and NaN is what shows up in hourly_rate_usd for the unmatched row —
+which is also why classify_pay has to check pd.isna(rate) before anything else,
+since NaN compares unequal to everything including itself.
+
+I also now see why DataFrame.apply needs axis=1 for calc_gross_pay and classify_pay
+specifically: those two functions need both hours_worked and hourly_rate_usd from
+the same row, so a lambda has to unpack row["..."] for each one. Series.apply was
+enough for Step 1 because parse_hours and clean_currency only ever look at one
+column's values.
+
+Next, I want more practice recognizing left vs. right merges without re-deriving
+them from the business rule every time, and I want to re-read Reference #1's four
+lineage violations until I can predict which test will catch a given mistake before
+I run it, instead of after.
